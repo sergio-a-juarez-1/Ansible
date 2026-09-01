@@ -34,8 +34,8 @@ Before running the playbooks, ensure your local controller meets these requireme
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com
-cd your-ansible-repo
+git clone https://github.com/sergio-a-juarez-1/Ansible.git
+cd Ansible
 ```
 
 ### 2. Verify Host Connectivity
