@@ -13,15 +13,36 @@ This infrastructure-as-code automation performs OS updating, migrates SSH away f
 
 ---
 
-## 🛠️ File Structure
+## 📂 Project Isolation & Setup
 
-Ensure your working project directory matches this specific structural design:
+### 1. Isolate the Project via Sparse-Checkout
+To pull this specific tool out of your repository workspace without cluttering your system with your complete monorepo setup, open your terminal and run:
+
+```bash
+# Initialize an empty local directory
+mkdir Home_Server && cd Home_Server
+git init
+
+# Link your multi-project workspace as the remote engine
+git remote add origin https://github.com/sergio-a-juarez-1/Ansible.git
+
+# Enable sparse-checkout and pull the target server directory
+git sparse-checkout set Home_Server
+git pull origin main
+```
+
+### 2. File Structure
+Ensure your working directory matches this structure inside `Home_Server/`:
 ```text
 .
 ├── inventory.ini
 ├── site.yml
 └── README.md
 ```
+
+---
+
+## 🛠️ Configuration Files
 
 ### 1. `inventory.ini`
 This file maps your target host networks, authentication usernames, and system tracking ports:
@@ -187,7 +208,7 @@ ansible-galaxy collection install community.general
 ansible-galaxy collection install community.docker
 ```
 
-### Initial Node Deployment Running
+### Run the Playbook
 Because a blank server initialization starts without validated local cryptographic host fingerprints, bypass standard host verification checking parameters on your very first bootstrapping execution pass:
 
 ```bash
