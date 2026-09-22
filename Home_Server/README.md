@@ -24,7 +24,7 @@ mkdir Home_Server && cd Home_Server
 git init
 
 # Link your multi-project workspace as the remote engine
-git remote add origin https://github.com
+git remote add origin https://github.com/sergio-a-juarez-1/Ansible.git
 
 # Enable sparse-checkout and pull the target server directory
 git sparse-checkout set Home_Server
