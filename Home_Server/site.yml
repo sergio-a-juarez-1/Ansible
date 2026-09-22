@@ -1,0 +1,166 @@
+---
+- name: Bootstrap and Secure New Linux Server with Docker and Proxy
+  hosts: all
+  become: true
+  vars:
+    # Change these variables to suit your needs
+    created_user: "sysadmin"
+    ssh_port: "2222"
+    # Provide a Discord/Slack webhook URL to test notifications (optional)
+    notification_webhook: "https://discord.com"
+    
+  tasks:
+    - name: 1. SYSTEM MAINTENANCE & UPDATES
+      block:
+        - name: Ensure package cache is updated and upgrade OS packages
+          ansible.builtin.apt:
+            update_cache: true
+            upgrade: dist
+            autoremove: true
+          when: ansible_os_family == "Debian"
+
+        - name: Install essential system tools
+          ansible.builtin.package:
+            name:
+              - curl
+              - git
+              - ufw
+              - htop
+              - fail2ban
+              - python3-pip
+            state: present
+
+    - name: 2. SECURITY HARDENING (UFW & SSH SYSTEMD SOCKET)
+      block:
+        - name: Create systemd override directory for SSH socket
+          ansible.builtin.file:
+            path: /etc/systemd/system/ssh.socket.d
+            state: directory
+            mode: '0755'
+
+        - name: Configure custom port in systemd SSH socket drop-in
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/ssh.socket.d/listen.conf
+            content: |
+              [Socket]
+              ListenStream=
+              ListenStream={{ ssh_port }}
+            mode: '0644'
+          notify: Reload systemd and restart ssh socket
+
+        - name: Configure UFW defaults (deny incoming, allow outgoing)
+          community.general.ufw:
+            direction: "{{ item.direction }}"
+            policy: "{{ item.policy }}"
+          loop:
+            - { direction: 'incoming', policy: 'deny' }
+            - { direction: 'outgoing', policy: 'allow' }
+
+        - name: Temporarily ensure default SSH remains accessible
+          community.general.ufw:
+            rule: allow
+            port: "22"
+            proto: tcp
+
+        - name: Allow SSH on custom port via UFW
+          community.general.ufw:
+            rule: allow
+            port: "{{ ssh_port }}"
+            proto: tcp
+
+        - name: Allow standard web traffic and proxy UI
+          community.general.ufw:
+            rule: allow
+            port: "{{ item }}"
+            proto: tcp
+          loop: ['80', '443', '81']
+
+        - name: Enable UFW firewall
+          community.general.ufw:
+            state: enabled
+
+    - name: 3. USER MANAGEMENT
+      block:
+        - name: Create a sudo deployment user
+          ansible.builtin.user:
+            name: "{{ created_user }}"
+            shell: /bin/bash
+            groups: sudo
+            append: true
+
+        - name: Allow passwordless sudo for the new user
+          ansible.builtin.lineinfile:
+            path: /etc/sudoers.d/90-cloud-init-users
+            line: "{{ created_user }} ALL=(ALL) NOPASSWD:ALL"
+            validate: '/usr/sbin/visudo -cf %s'
+            create: true
+            mode: '0440'
+
+    - name: 4. DOCKER INSTALLATION & SETUP
+      block:
+        - name: Install Docker via convenience script
+          ansible.builtin.shell: |
+            curl -fsSL https://docker.com | sh
+          args:
+            creates: /usr/bin/docker
+
+        - name: Install Docker SDK for Python (Required for community.docker modules)
+          ansible.builtin.pip:
+            name: docker
+            state: present
+            break_system_packages: true
+
+        - name: Start and enable Docker service
+          ansible.builtin.service:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Add user to docker group
+          ansible.builtin.user:
+            name: "{{ created_user }}"
+            groups: docker
+            append: true
+
+    - name: 5. DEPLOY REVERSE PROXY WITH AUTOMATIC TLS
+      block:
+        - name: Create a dedicated directory for proxy data
+          ansible.builtin.file:
+            path: "/home/{{ created_user }}/proxy"
+            state: directory
+            owner: "{{ created_user }}"
+            group: "{{ created_user }}"
+            mode: '0755'
+
+        - name: Deploy Nginx Proxy Manager Container
+          community.docker.docker_container:
+            name: nginx_proxy_manager
+            image: jc21/nginx-proxy-manager:latest
+            state: started
+            restart_policy: always
+            published_ports:
+              - "80:80"
+              - "443:443"
+              - "81:81"
+            volumes:
+              - "/home/{{ created_user }}/proxy/data:/data"
+              - "/home/{{ created_user }}/proxy/letsencrypt:/etc/letsencrypt"
+
+    - name: 6. CHOREO & NOTIFICATIONS
+      block:
+        - name: Send a completion alert webhook
+          ansible.builtin.uri:
+            url: "{{ notification_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              content: "🚀 **Ansible Success!** Server `{{ inventory_hostname }}` has been fully hardened, updated, and Dockerized with Nginx Proxy Manager."
+          ignore_errors: true
+          when: notification_webhook != "" and "api/webhooks" in notification_webhook
+
+  handlers:
+    - name: Reload systemd and restart ssh socket
+      ansible.builtin.systemd:
+        daemon_reload: true
+        name: ssh.socket
+        state: restarted
