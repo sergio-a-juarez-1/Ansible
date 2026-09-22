@@ -1,15 +1,15 @@
 # Ubuntu Home Server / VPS Bootstrapper
 
-A production-grade Ansible playbook designed to automatically configure, harden, and containerize a freshly installed **Ubuntu Server** node. 
+A production-grade, hardened Ansible playbook designed to automatically configure, secure, and containerize a freshly installed **Ubuntu Server** node. 
 
-This infrastructure-as-code automation performs OS updating, migrates SSH away from generic brute-force sweeps using native **systemd socket overrides**, establishes a tight **UFW firewall perimeter**, handles administrative deployment users, installs **Docker**, and deploys an automated **Nginx Proxy Manager** gateway to provision free, automatically renewing Let's Encrypt TLS certificates.
+This infrastructure-as-code automation handles core OS updates, migrates SSH away from generic brute-force vectors using native **systemd socket overrides**, establishes a tight **UFW firewall perimeter**, handles administrative user creation, installs **Docker**, and deploys an automated **Nginx Proxy Manager** gateway to handle free, automatically renewing Let's Encrypt TLS certificates.
 
 ## 🚀 Key Features
-* **System Upgrades & Tooling:** Automatically refreshes `apt` package trees, upgrades core packages, and sets up system maintenance suites (`ufw`, `fail2ban`, `htop`).
-* **Modern Systemd SSH Isolation:** Moves your public SSH connection path off port 22 to a customizable entry point (`2222`) utilizing native modern Ubuntu systemd socket overrides instead of old-school `sshd_config` line-edits.
-* **Firewall Perimeter:** Locks incoming network footprints down completely with `UFW`, opening explicit tracks only for web dashboards (`80`, `443`), proxy administration (`81`), and your remote SSH shell configuration.
-* **Dockerized Engine:** Bootstraps the official stable Docker container engine runtime along with its matching Python SDK dependencies to natively handle pipeline control interfaces.
-* **Automated Reverse Proxy & TLS:** Deploys an automated, visual reverse-proxy interface (Nginx Proxy Manager) that automatically requests and handles hands-free 90-day renewal updates for free Let's Encrypt SSL/TLS certs.
+* **System Upgrades & Maintenance:** Automatically refreshes `apt` caches, upgrades core packages safely, and installs default management tooling (`ufw`, `fail2ban`, `htop`).
+* **Modern Systemd SSH Isolation:** Seamlessly relocates the public SSH connection vector off standard port 22 to a customizable entry point (`2222`) utilizing modern Ubuntu systemd socket overrides rather than old-school file-edits.
+* **Hardened Perimeter Security:** Locks incoming network footprints down completely with `UFW`, opening explicit tracks *only* for public web traffic (`80`, `443`) and your custom remote SSH shell configuration.
+* **Native Docker Integration:** Bootstraps the official Docker runtime engine alongside its native APT-managed python bindings (`python3-docker`) to guarantee clean, non-destructive container automation.
+* **Isolated Reverse Proxy & TLS:** Deploys an automated Nginx Proxy Manager gateway that requests and automatically handles hands-free 90-day updates for free Let's Encrypt SSL/TLS certificates.
 
 ---
 
@@ -42,17 +42,6 @@ Ensure your working directory matches this structure inside `Home_Server/`:
 
 ---
 
-## 🛠️ Configuration Files
-
-### 1. `inventory.ini`
-This file maps your target host networks, authentication usernames, and system tracking ports. On your **first run**, keep your default system port configuration tracking target parameters (`22`):
-```ini
-[my_servers]
-192.168.122.66 ansible_user=u
-```
-
----
-
 ## ⚡ Setup & Execution
 
 ### Prerequisites
@@ -62,41 +51,41 @@ ansible-galaxy collection install community.general
 ansible-galaxy collection install community.docker
 ```
 
-### First-Time Execution (Port 22 bootstrap)
-Because a blank server initialization starts without validated local cryptographic host fingerprints, bypass standard host verification checking parameters on your very first bootstrapping execution pass:
+### Phase 1: First-Time Bootstrap Run (Port 22 Setup)
+On your very first execution pass against a clean OS, ensure your `inventory.ini` points to your initial setup user on port 22. Pass the `-k` and `-K` flags to manually feed the initial SSH and sudo credentials:
 
 ```bash
 ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory.ini site.yml -k -K
 ```
 
-* **`-k`**: Prompts manually for your remote target SSH system authentication user password.
-* **`-K`**: Prompts for your administrative privilege escalation `sudo` password string.
+### Phase 2: Ongoing Production Run (Post-Hardening)
+Once the playbook executes successfully, your default SSH listener shifts to port `2222` and your admin user `sysadmin` is created. Update your `inventory.ini` to map to Phase 2 tracking, and run subsequent maintenance smoothly:
 
-### Ongoing Execution (Post-Hardening Run)
-Once the playbook executes successfully, your SSH listener transitions to port `2222`. Update your `inventory.ini` to look like this:
-
-```ini
-[my_servers]
-192.168.122.66 ansible_user=sysadmin ansible_port=2222
-```
-
-Then you can run subsequent standard updates cleanly without password prompts (assuming your SSH key is added):
 ```bash
 ansible-playbook -i inventory.ini site.yml
 ```
 
 ---
 
-## 🔒 Automated TLS Certificate Setup
+## 🔒 Automated TLS Certificate Setup & Admin UI Access
 
-Once your playbook completes successfully, your reverse proxy infrastructure is fully operational.
+To maximize your home server's defense posture, **the Nginx Proxy Manager Admin Dashboard (Port 81) is intentionally kept closed on the public firewall** and bound strictly to the local loopback interface (`127.0.0.1`). 
 
-1. Open your web browser and connect to: `http://YOUR_SERVER_IP:81`
-2. Authenticate using default administration credentials:
+### 1. Establish an Encrypted SSH Management Tunnel
+To access your configuration manager securely from your local laptop, open an encrypted local port forwarding tunnel from your terminal:
+
+```bash
+ssh -L 8080:127.0.0.1:81 sysadmin@YOUR_SERVER_IP -p 2222
+```
+
+### 2. Configure Your Routes & Certificates
+Keep that terminal session running in the background, open your local web browser, and navigate to: **`http://localhost:8080`**
+
+1. Authenticate using default fallback administration credentials:
    * **Email:** `admin@example.com`
    * **Password:** `changeme`
-3. Update your administrator profile parameters to establish secure unique values.
-4. Navigate to **Hosts** ➔ **Proxy Hosts** ➔ **Add Proxy Host**.
-5. Set your domain target configurations, click the **SSL** block, select **Request a New SSL Certificate**, toggle **Force SSL**, and agree to the Let's Encrypt terms. 
+2. Update your administrator profile parameters immediately to establish secure unique values.
+3. Navigate to **Hosts** ➔ **Proxy Hosts** ➔ **Add Proxy Host**.
+4. Set your domain target configurations, click the **SSL** block, select **Request a New SSL Certificate**, toggle **Force SSL**, and agree to the Let's Encrypt terms. 
 
-*Nginx Proxy Manager will silently trigger an automated cron check every 24 hours. If any certificate is within 30 days of expiration, it will automatically handle renewal communication with Let's Encrypt over port 80 dynamically.*
+*Nginx Proxy Manager will silently trigger an automated internal check every 24 hours. If any certificate is within 30 days of expiration, it will automatically handle renewal communication with Let's Encrypt over public port 80 dynamically.*
