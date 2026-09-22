@@ -3,11 +3,10 @@
   hosts: all
   become: true
   vars:
-    # Change these variables to suit your needs
     created_user: "sysadmin"
     ssh_port: "2222"
-    # Provide a Discord/Slack webhook URL to test notifications (optional)
-    notification_webhook: "https://discord.com"
+    # Provide a complete Discord webhook URL to test notifications
+    notification_webhook: ""
     
   tasks:
     - name: 1. SYSTEM MAINTENANCE & UPDATES
@@ -19,7 +18,7 @@
             autoremove: true
           when: ansible_os_family == "Debian"
 
-        - name: Install essential system tools
+        - name: Install essential system tools and native Python Docker bindings
           ansible.builtin.package:
             name:
               - curl
@@ -27,7 +26,7 @@
               - ufw
               - htop
               - fail2ban
-              - python3-pip
+              - python3-docker  # Native APT package replaces raw PIP execution safely
             state: present
 
     - name: 2. SECURITY HARDENING (UFW & SSH SYSTEMD SOCKET)
@@ -56,7 +55,7 @@
             - { direction: 'incoming', policy: 'deny' }
             - { direction: 'outgoing', policy: 'allow' }
 
-        - name: Temporarily ensure default SSH remains accessible
+        - name: Temporarily ensure default SSH remains accessible during setup
           community.general.ufw:
             rule: allow
             port: "22"
@@ -68,14 +67,14 @@
             port: "{{ ssh_port }}"
             proto: tcp
 
-        - name: Allow standard web traffic and proxy UI
+        - name: Allow standard public web traffic (Keep Admin port 81 CLOSED)
           community.general.ufw:
             rule: allow
             port: "{{ item }}"
             proto: tcp
-          loop: ['80', '443', '81']
+          loop: ['80', '443']
 
-        - name: Enable UFW firewall
+        - name: Enable UFW firewall Perimeter
           community.general.ufw:
             state: enabled
 
@@ -88,10 +87,10 @@
             groups: sudo
             append: true
 
-        - name: Allow passwordless sudo for the new user
+        - name: Allow controlled sudo escalation for the deployment user
           ansible.builtin.lineinfile:
-            path: /etc/sudoers.d/90-cloud-init-users
-            line: "{{ created_user }} ALL=(ALL) NOPASSWD:ALL"
+            path: "/etc/sudoers.d/90-{{ created_user }}-users"
+            line: "{{ created_user }} ALL=(ALL) ALL"  # Safer: requires password validation
             validate: '/usr/sbin/visudo -cf %s'
             create: true
             mode: '0440'
@@ -103,12 +102,6 @@
             curl -fsSL https://docker.com | sh
           args:
             creates: /usr/bin/docker
-
-        - name: Install Docker SDK for Python (Required for community.docker modules)
-          ansible.builtin.pip:
-            name: docker
-            state: present
-            break_system_packages: true
 
         - name: Start and enable Docker service
           ansible.builtin.service:
@@ -139,9 +132,9 @@
             state: started
             restart_policy: always
             published_ports:
-              - "80:80"
-              - "443:443"
-              - "81:81"
+              - "0.0.0.0:80:80"        # Publicly open for Let's Encrypt validation
+              - "0.0.0.0:443:443"      # Publicly open for secure SSL traffic
+              - "127.0.0.1:81:81"      # Hardened: Accessible ONLY locally or via SSH tunnel
             volumes:
               - "/home/{{ created_user }}/proxy/data:/data"
               - "/home/{{ created_user }}/proxy/letsencrypt:/etc/letsencrypt"
